@@ -17,3 +17,8 @@ env/
 # IDE
 .vscode/
 .idea/
+
+# Secrets
+server/credentials.json
+server/token.json
+server/.env
