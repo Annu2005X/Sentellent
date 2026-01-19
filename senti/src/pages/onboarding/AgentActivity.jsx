@@ -1,6 +1,28 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
+import { api } from "../../services/api";
+import { useNavigate } from "react-router-dom";
 
 const AgentActivity = () => {
+    const navigate = useNavigate();
+    const [memories, setMemories] = useState([]);
+
+    const handleLogout = async () => {
+        await api.logout();
+        navigate('/login');
+    };
+
+    useEffect(() => {
+        const fetchData = async () => {
+            try {
+                const data = await api.getMemory();
+                setMemories(data.memories || []);
+            } catch (e) {
+                console.error("Failed to fetch activity", e);
+            }
+        };
+        fetchData();
+    }, []);
+
     return (
         <div className="bg-background-light dark:bg-background-dark font-display text-slate-900 dark:text-white min-h-screen">
             <div className="flex flex-col min-h-screen">
@@ -32,17 +54,8 @@ const AgentActivity = () => {
 
                     <div className="flex items-center gap-6">
                         <nav className="hidden md:flex items-center gap-6">
-                            {["Dashboard", "Activity", "Memory", "Settings"].map((item) => (
-                                <a
-                                    key={item}
-                                    className={`text-sm font-medium ${item === "Activity"
-                                        ? "text-primary font-semibold"
-                                        : "text-slate-600 dark:text-white hover:text-primary"
-                                        }`}
-                                >
-                                    {item}
-                                </a>
-                            ))}
+                            <a href="/dashboard" className="text-sm font-medium text-slate-600 dark:text-white hover:text-primary">Dashboard</a>
+                            <a href="/activity" className="text-sm font-medium text-primary font-semibold">Activity</a>
                         </nav>
 
                         <div className="h-6 w-px bg-slate-200 dark:bg-[#233648]" />
@@ -52,13 +65,9 @@ const AgentActivity = () => {
                             Agent Active
                         </button>
 
-                        <div
-                            className="size-10 rounded-full bg-cover border-2 border-primary/20"
-                            style={{
-                                backgroundImage:
-                                    "url('https://lh3.googleusercontent.com/aida-public/AB6AXuDdHp3A6sxmHpruGUVAyjVyGx0F4y1CwfQHijCSVOVM4F5KXglA8e8YAClBfoBhBC7oujA26MdvEf-v_rif8zyMqUykoVe5-JaVcgt7gvI8waUtY_MGS51kigx8wvauEm_pZuP2lrpAdy1zaCyjeVgtl1IONjVDqOARpnYgDJM7jDT-CRQco7bF_Tt46v9SrIdvaSZYjbWibJCVfe925bsd_2kRBOdwchx-vqxE5YuhIHHCUdGRQfk6yrCfYZIBCPwcOojy5QN7wHw')",
-                            }}
-                        />
+                        <button onClick={handleLogout} className="text-slate-500 hover:text-red-500 transition-colors" title="Logout">
+                            <span className="material-symbols-outlined">logout</span>
+                        </button>
                     </div>
                 </header>
 
@@ -77,18 +86,8 @@ const AgentActivity = () => {
 
                         <nav className="space-y-1">
                             <SideItem icon="analytics" label="All Activity" active />
-                            <SideItem icon="mail" label="Email Syncs" />
-                            <SideItem icon="calendar_month" label="Calendar Logic" />
-                            <SideItem icon="chat_bubble" label="Chat Updates" />
                             <SideItem icon="database" label="Memory Logs" />
                         </nav>
-
-                        <div className="mt-auto pt-4 border-t border-slate-200 dark:border-[#233648]">
-                            <button className="w-full bg-[#233648] text-white h-10 rounded-lg text-sm font-bold flex items-center justify-center gap-2">
-                                <span className="material-symbols-outlined text-[18px]">sync</span>
-                                Trigger Sync
-                            </button>
-                        </div>
                     </aside>
 
                     {/* CENTER CONTENT */}
@@ -96,62 +95,45 @@ const AgentActivity = () => {
                         <div className="p-8">
                             <h1 className="text-4xl font-black mb-2">Activity & Reasoning</h1>
                             <p className="text-slate-500 dark:text-[#92adc9] max-w-xl">
-                                Real-time trace of background reasoning and autonomous actions.
+                                Real-time trace of memory updates and autonomous actions.
                             </p>
                         </div>
 
                         <div className="px-8 space-y-4 pb-12">
-                            <ActivityCard
-                                icon="mail"
-                                title="Synced Email: Extracted Project X delay"
-                                time="14:22:05 UTC"
-                                status="Success"
-                                statusColor="emerald"
-                                description="Processed 14 new messages from Engineering Team."
-                            />
+                            {memories.length > 0 ? (
+                                memories.map((mem) => (
+                                    <ActivityCard
+                                        key={mem.id}
+                                        icon="psychology"
+                                        title={`Memory Update: ${mem.content.split(':')[0]}`}
+                                        time={mem.time}
+                                        status="Learned"
+                                        statusColor="emerald"
+                                        description={mem.content}
+                                    />
+                                ))
+                            ) : (
+                                <div className="text-center text-slate-500 py-10">No activity recorded yet. Chat with the agent to generate memories.</div>
+                            )}
 
-                            <ActivityCard
-                                icon="chat_bubble"
-                                title="Chat Update: Noted preference for no 9 AM meetings"
-                                time="12:05:11 UTC"
-                                status="Learned Insight"
-                                statusColor="amber"
-                            />
-
+                            {/* Static Example for visual if empty, or keep as history */}
                             <ActivityCard
                                 icon="calendar_today"
-                                title='Calendar Logic: Rescheduled "Deep Work" block'
-                                time="09:15:44 UTC"
-                                status="Auto-Action"
+                                title='System: Agent Initialized'
+                                time="Just now"
+                                status="System"
                                 statusColor="primary"
-                            />
-
-                            <ActivityCard
-                                icon="warning"
-                                title="API Error: Notion Sync Failed"
-                                time="08:02:11 UTC"
-                                status="Needs Attention"
-                                statusColor="red"
-                                error
                             />
                         </div>
                     </section>
 
                     {/* RIGHT PANEL */}
                     <aside className="w-80 hidden xl:flex flex-col border-l border-slate-200 dark:border-[#233648] bg-white dark:bg-background-dark p-6">
-                        <h4 className="text-sm font-bold uppercase mb-4">Agent Stats (24h)</h4>
+                        <h4 className="text-sm font-bold uppercase mb-4">Agent Stats</h4>
 
                         <div className="grid grid-cols-2 gap-3 mb-6">
-                            <Stat label="Actions" value="142" color="primary" />
-                            <Stat label="Learning" value="28" color="amber" />
-                        </div>
-
-                        <h4 className="text-sm font-bold uppercase mb-4">Current Thinking</h4>
-                        <div className="bg-[#111a22] p-4 rounded-lg border border-[#233648]">
-                            <p className="text-xs text-slate-400 font-mono mb-2">t+2s status</p>
-                            <p className="text-sm italic text-slate-300">
-                                "Monitoring project-delta channel for release blockers..."
-                            </p>
+                            <Stat label="Memories" value={memories.length} color="primary" />
+                            <Stat label="Actions" value="0" color="amber" />
                         </div>
                     </aside>
                 </main>

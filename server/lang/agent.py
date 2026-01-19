@@ -1,6 +1,7 @@
 import os
 import base64
 import datetime
+import uuid
 from typing import TypedDict, List, Annotated
 from email.message import EmailMessage
 
@@ -18,10 +19,37 @@ from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode
 from langgraph.checkpoint.memory import MemorySaver
 
-load_dotenv()
+# ChromaDB imports
+import chromadb
+from langchain_chroma import Chroma
+from langchain_openai import OpenAIEmbeddings
+
+load_dotenv(override=True)
+
+# Debug: Print API key to verify it's loaded
+api_key = os.getenv('OPENAI_API_KEY')
+print(f"[DEBUG] Loaded API Key: {api_key[:20]}..." if api_key else "[DEBUG] No API key found!")
 
 # ==========================================
-# 1. STATE & MEMORY
+# 0. PERSISTENCE SETUP (ChromaDB)
+# ==========================================
+# Initialize ChromaDB in persistence directory
+PERSIST_DIRECTORY = os.path.join(os.getcwd(), "db")
+chroma_client = chromadb.PersistentClient(path=PERSIST_DIRECTORY)
+
+# Initialize Embedding Function (OpenAI)
+embedding_function = OpenAIEmbeddings(model="text-embedding-3-small", api_key=api_key)
+
+# Create or Get Collection
+collection_name = "user_memory"
+db = Chroma(
+    client=chroma_client,
+    collection_name=collection_name,
+    embedding_function=embedding_function,
+)
+
+# ==========================================
+# 1. STATE & MEMORY FUNCTIONS
 # ==========================================
 
 class AgentState(TypedDict):
@@ -29,16 +57,53 @@ class AgentState(TypedDict):
     user_id: str
     memory: List[str]
 
-# Simple in-memory storage
-USER_MEMORY = {}
+def store_memory_to_db(user_id: str, content: str, source: str = "chat"):
+    """Stores a memory snippet into ChromaDB."""
+    memory_id = str(uuid.uuid4())
+    db.add_texts(
+        texts=[content],
+        metadatas=[{"user_id": user_id, "source": source, "timestamp": datetime.datetime.now().isoformat()}],
+        ids=[memory_id]
+    )
+    print(f"[Memory] Stored: {content}")
 
-def store_memory(user_id: str, key: str, value: str):
-    if user_id not in USER_MEMORY:
-        USER_MEMORY[user_id] = []
-    USER_MEMORY[user_id].append(f"{key.upper()}: {value}")
+def retrieve_memory_from_db(user_id: str, query: str = "", k: int = 5):
+    """Retrieves relevant memories for a user."""
+    search_query = query if query else "user preferences and facts"
+    try:
+        docs = db.similarity_search(
+            search_query,
+            k=k,
+            filter={"user_id": user_id}
+        )
+        return [doc.page_content for doc in docs]
+    except Exception as e:
+        print(f"[ERROR] Memory retrieval failed: {e}")
+        return []
 
-def retrieve_memory(user_id: str):
-    return USER_MEMORY.get(user_id, [])
+def get_all_memories(user_id: str):
+    """Fetches all memories for a user (manual fetch via client)."""
+    # Helper to get raw data for frontend
+    try:
+        col = chroma_client.get_collection(collection_name)
+        results = col.get(where={"user_id": user_id})
+        memories = []
+        if results and results['documents']:
+            for i, doc in enumerate(results['documents']):
+                meta = results['metadatas'][i]
+                memories.append({
+                    "id": results['ids'][i],
+                    "content": doc,
+                    "time": meta.get("timestamp", "Unknown"),
+                    "type": "memory"
+                })
+        return memories
+    except Exception as e:
+        print(f"Error fetching all memories: {e}")
+        return []
+
+# Re-export for app.py to use
+USER_MEMORY = {} # Deprecated, kept for interface compat if needed, but we use get_all_memories now
 
 # ==========================================
 # 2. GOOGLE AUTH & TOOLS
@@ -60,22 +125,20 @@ def authenticate_google():
         if creds and creds.expired and creds.refresh_token:
             creds.refresh(Request())
         else:
-            if not os.path.exists('credentials.json'):
-                raise FileNotFoundError("credentials.json not found.")
-            flow = InstalledAppFlow.from_client_secrets_file('credentials.json', SCOPES)
-            creds = flow.run_local_server(port=0)
-        with open('token.json', 'w') as token:
-            token.write(creds.to_json())
+            # Server-side flow usually handled by app.py now
+            pass 
     return creds
 
 def get_services():
     creds = authenticate_google()
+    if not creds: return None, None
     return build('gmail', 'v1', credentials=creds), build('calendar', 'v3', credentials=creds)
 
 @tool
 def read_inbox(count: int = 5):
     """Reads the latest unread emails from the inbox."""
     service, _ = get_services()
+    if not service: return "Authentication required."
     results = service.users().messages().list(userId='me', labelIds=['INBOX', 'UNREAD'], maxResults=count).execute()
     messages = results.get('messages', [])
     if not messages: return "No unread messages found."
@@ -93,6 +156,7 @@ def read_inbox(count: int = 5):
 def send_email(to: str, subject: str, body: str):
     """Sends an email to the specified recipient."""
     service, _ = get_services()
+    if not service: return "Authentication required."
     message = EmailMessage()
     message.set_content(body)
     message['To'], message['From'], message['Subject'] = to, 'me', subject
@@ -107,6 +171,7 @@ def send_email(to: str, subject: str, body: str):
 def list_calendar_events(count: int = 5):
     """Lists upcoming calendar events."""
     _, service = get_services()
+    if not service: return "Authentication required."
     now = datetime.datetime.utcnow().isoformat() + 'Z'
     events_result = service.events().list(calendarId='primary', timeMin=now, maxResults=count, singleEvents=True, orderBy='startTime').execute()
     events = events_result.get('items', [])
@@ -118,14 +183,33 @@ def list_calendar_events(count: int = 5):
 # ==========================================
 
 tools = [read_inbox, send_email, list_calendar_events]
-llm = ChatOpenAI(model="gpt-4o-mini").bind_tools(tools)
+# Switch to a different model (gpt-4o-mini) which may have separate quota limits
+llm = ChatOpenAI(model="gpt-4o-mini", api_key=api_key).bind_tools(tools)
 
 def agent_node(state: AgentState):
-    memories = retrieve_memory(state["user_id"])
-    memory_str = "\n".join(memories) if memories else "No relevant memories."
-    system_prompt = f"You are a Chief of Staff AI.\nUser Memory:\n{memory_str}\nUse memory to personalize responses."
+    # Retrieve relevant memories from Vector Store
+    user_id = state["user_id"]
+    last_message = state["messages"][-1].content if state["messages"] else ""
+    
+    # Retrieve memories relevant to the current context
+    memories = retrieve_memory_from_db(user_id, query=last_message)
+    memory_str = "\n".join(memories) if memories else "No relevant memories found."
+    
+    system_prompt = f"You are a Chief of Staff AI.\nRelevant Memories:\n{memory_str}\n\nUse these memories to personalize your response and actions."
+    
     messages = [SystemMessage(content=system_prompt)] + state["messages"]
-    return {"messages": [llm.invoke(messages)]}
+    try:
+        response_msg = llm.invoke(messages)
+        # If the model returned an empty message (no content and no tool calls), treat it as a failure
+        has_content = getattr(response_msg, "content", None)
+        has_tool_calls = getattr(response_msg, "tool_calls", None)
+        if not has_content and not has_tool_calls:
+            raise ValueError("Empty response from LLM")
+    except Exception as e:
+        # Log the error and provide a graceful fallback with non‑empty content
+        print(f"[ERROR] OpenAI request failed: {e}")
+        response_msg = AIMessage(content="⚠️ The AI service is currently unavailable (quota exceeded). Please try again later.")
+    return {"messages": [response_msg]}
 
 def update_memory_node(state: AgentState):
     if not state["messages"]: return {}
@@ -133,15 +217,13 @@ def update_memory_node(state: AgentState):
     content = last_msg.content if isinstance(last_msg, (HumanMessage, ToolMessage)) else ""
     if not content: return {}
 
-    extractor = ChatOpenAI(model="gpt-4o-mini")
-    prompt = f"Extract preferences/facts from: {content}\nReturn ONLY 'KEY: Value'. 'None' if nothing."
+    extractor = ChatOpenAI(model="gpt-4o-mini", api_key=api_key)
+    prompt = f"Extract important personal preferences, facts, or tasks from this text: '{content}'.\nReturn ONLY the fact/preference as a concise sentence. If nothing worth remembering, return 'None'."
     try:
         extraction = extractor.invoke(prompt).content
         if "None" not in extraction:
-            for line in extraction.split('\n'):
-                if ":" in line:
-                    k, v = line.split(":", 1)
-                    store_memory(state["user_id"], k.strip(), v.strip())
+            # Store in Vector DB
+            store_memory_to_db(state["user_id"], extraction, source="conversation_insight")
     except: pass
     return {}
 

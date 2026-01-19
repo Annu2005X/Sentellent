@@ -1,6 +1,15 @@
 import React from 'react';
+import { useNavigate } from 'react-router-dom';
+import { api } from '../../services/api';
 
 const OnBoarding = () => {
+  const navigate = useNavigate();
+
+  const handleContinue = () => {
+    // Redirect directly to backend to ensure session cookies are set correctly
+    window.location.href = 'http://localhost:5000/auth/google';
+  };
+
   return (
     <div className="bg-background-light dark:bg-background-dark min-h-screen flex flex-col font-display transition-colors duration-300">
       {/* Header */}
@@ -47,7 +56,7 @@ const OnBoarding = () => {
                 schedule, tasks, and communications.
               </p>
             </div>
-            <button className="secondary-btn">Skip for now</button>
+            <button className="secondary-btn" onClick={() => navigate('/dashboard')}>Skip for now</button>
           </div>
 
           {/* Card */}
@@ -95,7 +104,7 @@ const OnBoarding = () => {
                   assistant.
                 </p>
 
-                <button className="primary-btn flex items-center gap-3 mx-auto">
+                <button className="primary-btn flex items-center gap-3 mx-auto" onClick={handleContinue}>
                   <svg className="size-6" viewBox="0 0 24 24">
                     <path
                       fill="#4285F4"
