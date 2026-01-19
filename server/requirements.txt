@@ -1,3 +1,9 @@
 flask
 flask-cors
 python-dotenv
+langchain-core
+langchain-openai
+langgraph
+google-auth
+google-auth-oauthlib
+google-api-python-client
