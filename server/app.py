@@ -4,6 +4,9 @@ import json
 from flask import Flask, request, jsonify, redirect, session, url_for
 from flask_cors import CORS
 from langchain_core.messages import HumanMessage
+import base64
+import io
+from pypdf import PdfReader
 from google_auth_oauthlib.flow import Flow
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
@@ -106,25 +109,65 @@ def chat_endpoint():
         if not data:
             return jsonify({"error": "No input data provided"}), 400
             
-        user_input = data.get("message")
+        user_input = data.get("message", "")
+        file_data = data.get("file") # {name, type, data: base64}
         
-        # Determine User ID from authenticated session
+        content_parts = []
+        
+        # 1. Handle User Text
+        if user_input:
+            content_parts.append({"type": "text", "text": user_input})
+            
+        # 2. Handle File Attachment
+        if file_data:
+            try:
+                fname = file_data.get('name', 'file')
+                ftype = file_data.get('type', '')
+                b64_data = file_data.get('data', '')
+                
+                # Strip header if present
+                if ',' in b64_data:
+                    header, encoded = b64_data.split(',', 1)
+                else:
+                    encoded = b64_data
+                    # Reconstruct header for OpenAI if missing but needed? 
+                    # Actually OpenAI image_url needs the data URI scheme usually e.g. "data:image/jpeg;base64,..."
+                    # If incoming data HAS header, we keep it for OpenAI URL, but strip it for decoding bytes.
+                
+                file_bytes = base64.b64decode(encoded)
+                
+                if ftype.startswith('image/'):
+                     # Pass full data uri to LLM
+                     content_parts.append({
+                        "type": "image_url",
+                        "image_url": {"url": b64_data}
+                     })
+                elif ftype == 'application/pdf':
+                    reader = PdfReader(io.BytesIO(file_bytes))
+                    pdf_text = ""
+                    for page in reader.pages:
+                        pdf_text += page.extract_text() + "\n"
+                    content_parts.append({"type": "text", "text": f"\n\n[Attached PDF: {fname}]\n{pdf_text}"})
+                elif ftype.startswith('text/'):
+                    text_content = file_bytes.decode('utf-8')
+                    content_parts.append({"type": "text", "text": f"\n\n[Attached File: {fname}]\n{text_content}"})
+            except Exception as e:
+                print(f"Error processing file: {e}")
+                content_parts.append({"type": "text", "text": f"[System: Failed to process attached file {fname}: {str(e)}]"})
+
+        if not content_parts:
+             return jsonify({"error": "Empty message"}), 400
+
+        # Use authenticated user email if available
         user_info = get_current_user_info()
         user_id = user_info.get('email') if user_info else "demo_user"
-        
-        if not user_input:
-            return jsonify({"error": "Message field is required"}), 400
 
-        if user_input.lower().startswith("email:"):
-            content = user_input[6:].strip()
-            user_input = f"Incoming Data (Email): {content}"
-
-        result = agent.invoke(
-            {"user_id": user_id, "messages": [HumanMessage(content=user_input)]},
+        response = agent.invoke(
+            {"messages": [HumanMessage(content=content_parts)], "user_id": user_id},
             config={"configurable": {"thread_id": user_id}}
         )
         
-        last_msg = result["messages"][-1]
+        last_msg = response["messages"][-1]
         response_text = last_msg.content
         
         return jsonify({

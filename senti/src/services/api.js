@@ -15,11 +15,12 @@ export const api = {
     },
 
     // Send a message to the agent
-    sendMessage: async (message, userId = 'demo_user') => {
+    sendMessage: async (message, file = null) => {
         try {
             const response = await axios.post(`${API_URL}/chat`, {
                 message,
-                user_id: userId
+                file, // { name, type, data: base64 }
+                user_id: "demo_user" // Backend will override if logged in
             });
             return response.data;
         } catch (error) {

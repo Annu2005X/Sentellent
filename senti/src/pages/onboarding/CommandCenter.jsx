@@ -10,15 +10,17 @@ const CommandCenter = () => {
         {
             id: 1,
             role: "ai",
-            content: "**System Online.**\n\nI am ready to assist you.",
+            content: "**System Online.**\n\nI am ready to assist you. You can attach images or documents for analysis.",
             time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
         }
     ]);
     const [inputText, setInputText] = useState("");
+    const [file, setFile] = useState(null);
     const [isLoading, setIsLoading] = useState(false);
     const [memories, setMemories] = useState([]);
     const [user, setUser] = useState(null);
     const messagesEndRef = useRef(null);
+    const fileInputRef = useRef(null);
 
     const scrollToBottom = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -45,22 +47,49 @@ const CommandCenter = () => {
         loadData();
     }, []);
 
+    const handleFileSelect = (e) => {
+        const selected = e.target.files[0];
+        if (!selected) return;
+
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            setFile({
+                name: selected.name,
+                type: selected.type,
+                data: e.target.result // base64 data url
+            });
+        };
+        reader.readAsDataURL(selected);
+    };
+
+    const clearFile = () => {
+        setFile(null);
+        if (fileInputRef.current) fileInputRef.current.value = "";
+    };
+
     const handleSend = async () => {
-        if (!inputText.trim()) return;
+        if (!inputText.trim() && !file) return;
 
         const userMsg = {
             id: Date.now(),
             role: "user",
             content: inputText,
+            file: file,
             time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
         };
 
         setMessages(prev => [...prev, userMsg]);
+        // Store temp file ref for API call, then clear UI state
+        const tempFile = file;
+
         setInputText("");
+        setFile(null);
+        if (fileInputRef.current) fileInputRef.current.value = "";
+
         setIsLoading(true);
 
         try {
-            const response = await api.sendMessage(inputText);
+            const response = await api.sendMessage(inputText, tempFile);
 
             const aiMsg = {
                 id: Date.now() + 1,
@@ -104,6 +133,7 @@ const CommandCenter = () => {
             }
         ]);
         setInputText("");
+        clearFile();
     };
 
     return (
@@ -150,7 +180,6 @@ const CommandCenter = () => {
                     {/* User Card */}
                     <div className="flex flex-col gap-3">
                         <div className="flex items-center gap-3 p-3 bg-[#1c2a38] rounded-xl border border-[#233648]">
-                            {/* Profile Pic Removed */}
                             <div className="flex-1 min-w-0">
                                 <p className="text-xs font-bold truncate">{user?.name || "Guest User"}</p>
                                 <p className="text-[10px] text-[#92adc9] truncate">{user?.email || "Premium Workspace"}</p>
@@ -188,6 +217,7 @@ const CommandCenter = () => {
                                         user={msg.role === 'user'}
                                         time={msg.time}
                                         text={msg.content}
+                                        file={msg.file}
                                     />
                                 ))}
                                 {isLoading && (
@@ -210,25 +240,53 @@ const CommandCenter = () => {
                             {/* Input */}
                             <div className="p-4 md:p-6 bg-[#111a22] border-t border-[#233648]">
                                 <div className="relative max-w-4xl mx-auto">
+                                    {/* File Preview */}
+                                    {file && (
+                                        <div className="absolute bottom-full mb-2 left-0 bg-[#1c2a38] border border-[#233648] rounded-lg p-2 pr-3 flex items-center gap-2 shadow-lg">
+                                            {file.type.startsWith('image/') ? (
+                                                <img src={file.data} className="w-8 h-8 rounded object-cover" alt="preview" />
+                                            ) : (
+                                                <div className="bg-slate-700/50 p-1.5 rounded">
+                                                    <span className="material-symbols-outlined text-sm text-primary">description</span>
+                                                </div>
+                                            )}
+                                            <span className="text-xs text-white max-w-[200px] truncate">{file.name}</span>
+                                            <button onClick={clearFile} className="ml-2 text-gray-400 hover:text-red-500 flex items-center">
+                                                <span className="material-symbols-outlined text-[16px]">close</span>
+                                            </button>
+                                        </div>
+                                    )}
+
                                     <textarea
                                         rows={1}
                                         value={inputText}
                                         onChange={(e) => setInputText(e.target.value)}
                                         onKeyDown={handleKeyPress}
-                                        placeholder="Type a command or ask a question..."
+                                        placeholder="Type a command or attach a file..."
                                         className="w-full bg-[#1c2a38] border border-[#233648] rounded-xl py-4 pl-5 pr-24 text-white resize-none placeholder:text-[#92adc9] focus:outline-none focus:border-primary"
                                     />
                                     <div className="absolute right-3 bottom-3 flex gap-2">
-                                        <button className="bg-primary hover:bg-primary/90 p-2 rounded-lg transition-colors" onClick={handleSend} disabled={isLoading}>
+                                        <input
+                                            type="file"
+                                            ref={fileInputRef}
+                                            className="hidden"
+                                            onChange={handleFileSelect}
+                                            accept="image/*,.pdf,.txt,.doc,.docx"
+                                        />
+                                        <button
+                                            className="text-[#92adc9] hover:text-white p-2 transition-colors flex items-center justify-center"
+                                            onClick={() => fileInputRef.current?.click()}
+                                            title="Attach file"
+                                        >
+                                            <span className="material-symbols-outlined">attach_file</span>
+                                        </button>
+                                        <button className="bg-primary hover:bg-primary/90 p-2 rounded-lg transition-colors flex items-center justify-center" onClick={handleSend} disabled={isLoading}>
                                             <span className="material-symbols-outlined">send</span>
                                         </button>
                                     </div>
                                 </div>
                             </div>
                         </section>
-
-                        {/* Right Panel REMOVED */}
-
                     </div>
                 </main>
             </div>
@@ -237,7 +295,7 @@ const CommandCenter = () => {
 };
 
 /* Chat Bubble Component with Markdown */
-const ChatBubble = ({ ai, user, time, text }) => {
+const ChatBubble = ({ ai, user, time, text, file }) => {
     const isAI = ai;
     return (
         <div
@@ -257,6 +315,22 @@ const ChatBubble = ({ ai, user, time, text }) => {
                     {isAI ? "Sentellent" : "You"} · {time}
                 </div>
                 <div className={`bg-[#1c2a38] border border-[#233648] rounded-xl px-5 py-4 text-sm whitespace-pre-wrap text-left ${user ? "bg-primary/10 border-primary/20" : ""}`}>
+                    {file && (
+                        <div className="mb-3 p-2 bg-black/20 rounded border border-white/10 flex items-center gap-3 w-fit">
+                            {file.type.startsWith('image/') ? (
+                                <img src={file.data} alt="attachment" className="w-16 h-16 object-cover rounded" />
+                            ) : (
+                                <div className="bg-white/10 p-2 rounded">
+                                    <span className="material-symbols-outlined text-xl">description</span>
+                                </div>
+                            )}
+                            <div className="text-left">
+                                <p className="text-xs font-bold truncate max-w-[150px]">{file.name}</p>
+                                <p className="text-[10px] text-gray-400 uppercase">{file.type.split('/')[1]}</p>
+                            </div>
+                        </div>
+                    )}
+
                     {user ? (
                         text
                     ) : (

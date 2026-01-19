@@ -153,6 +153,27 @@ def read_inbox(count: int = 5):
     return "\n".join(summary)
 
 @tool
+def search_emails(query: str, count: int = 5):
+    """Searches emails. Query examples: 'from:john', 'subject:meeting', 'is:unread'."""
+    service, _ = get_services()
+    if not service: return "Authentication required."
+    results = service.users().messages().list(userId='me', q=query, maxResults=count).execute()
+    messages = results.get('messages', [])
+    if not messages: return "No matching emails found."
+    
+    summary = []
+    for msg in messages:
+        try:
+            txt = service.users().messages().get(userId='me', id=msg['id']).execute()
+            headers = txt['payload']['headers']
+            subject = next((h['value'] for h in headers if h['name'] == 'Subject'), "No Subject")
+            sender = next((h['value'] for h in headers if h['name'] == 'From'), "Unknown")
+            summary.append(f"From: {sender} | Subject: {subject} | Snippet: {txt.get('snippet', '')}")
+        except:
+            continue
+    return "\n".join(summary)
+
+@tool
 def send_email(to: str, subject: str, body: str):
     """Sends an email to the specified recipient."""
     service, _ = get_services()
@@ -169,14 +190,25 @@ def send_email(to: str, subject: str, body: str):
 
 @tool
 def list_calendar_events(count: int = 5):
-    """Lists upcoming calendar events."""
+    """Lists upcoming calendar events with IDs."""
     _, service = get_services()
     if not service: return "Authentication required."
     now = datetime.datetime.utcnow().isoformat() + 'Z'
     events_result = service.events().list(calendarId='primary', timeMin=now, maxResults=count, singleEvents=True, orderBy='startTime').execute()
     events = events_result.get('items', [])
     if not events: return "No events found."
-    return "\n".join([f"{e['start'].get('dateTime', e['start'].get('date'))}: {e['summary']}" for e in events])
+    return "\n".join([f"[ID: {e['id']}] {e['start'].get('dateTime', e['start'].get('date'))}: {e['summary']}" for e in events])
+
+@tool
+def delete_calendar_event(event_id: str):
+    """Deletes a calendar event by its ID."""
+    _, service = get_services()
+    if not service: return "Authentication required."
+    try:
+        service.events().delete(calendarId='primary', eventId=event_id).execute()
+        return f"Event {event_id} deleted."
+    except Exception as e:
+        return f"Error deleting event: {e}"
 
 @tool
 def create_calendar_event(summary: str, start_time: str, end_time: str, description: str = ""):
@@ -190,8 +222,8 @@ def create_calendar_event(summary: str, start_time: str, end_time: str, descript
     event_body = {
         'summary': summary,
         'description': description,
-        'start': {'dateTime': start_time, 'timeZone': 'UTC'},
-        'end': {'dateTime': end_time, 'timeZone': 'UTC'},
+        'start': {'dateTime': start_time},
+        'end': {'dateTime': end_time},
     }
     try:
         e = service.events().insert(calendarId='primary', body=event_body).execute()
@@ -203,7 +235,7 @@ def create_calendar_event(summary: str, start_time: str, end_time: str, descript
 # 3. GRAPH LOGIC
 # ==========================================
 
-tools = [read_inbox, send_email, list_calendar_events, create_calendar_event]
+tools = [read_inbox, send_email, search_emails, list_calendar_events, create_calendar_event, delete_calendar_event]
 # Switch to a different model (gpt-4o-mini) which may have separate quota limits
 llm = ChatOpenAI(model="gpt-4o-mini", api_key=api_key).bind_tools(tools)
 
@@ -212,11 +244,16 @@ def agent_node(state: AgentState):
     user_id = state["user_id"]
     last_message = state["messages"][-1].content if state["messages"] else ""
     
+    # Handle multimodal content (list of dicts)
+    if isinstance(last_message, list):
+         text_parts = [block.get("text", "") for block in last_message if block.get("type") == "text"]
+         last_message = " ".join(text_parts)
+    
     # Retrieve memories relevant to the current context
     memories = retrieve_memory_from_db(user_id, query=last_message)
     memory_str = "\n".join(memories) if memories else "No relevant memories found."
     
-    current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    current_time = datetime.datetime.now().astimezone().isoformat()
     system_prompt = f"You are a Chief of Staff AI.\nCurrent DateTime: {current_time}\nRelevant Memories:\n{memory_str}\n\nUse these memories and current time to personalize your response and actions."
     
     messages = [SystemMessage(content=system_prompt)] + state["messages"]
