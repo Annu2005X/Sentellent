@@ -178,11 +178,32 @@ def list_calendar_events(count: int = 5):
     if not events: return "No events found."
     return "\n".join([f"{e['start'].get('dateTime', e['start'].get('date'))}: {e['summary']}" for e in events])
 
+@tool
+def create_calendar_event(summary: str, start_time: str, end_time: str, description: str = ""):
+    """Creates a calendar event.
+    start_time and end_time must be ISO 8601 strings (e.g., '2024-01-20T10:00:00').
+    IMPORTANT: Provide the full date and time.
+    """
+    _, service = get_services()
+    if not service: return "Authentication required."
+    
+    event_body = {
+        'summary': summary,
+        'description': description,
+        'start': {'dateTime': start_time, 'timeZone': 'UTC'},
+        'end': {'dateTime': end_time, 'timeZone': 'UTC'},
+    }
+    try:
+        e = service.events().insert(calendarId='primary', body=event_body).execute()
+        return f"Event created: {e.get('htmlLink')}"
+    except Exception as e:
+        return f"Error creating event: {e}"
+
 # ==========================================
 # 3. GRAPH LOGIC
 # ==========================================
 
-tools = [read_inbox, send_email, list_calendar_events]
+tools = [read_inbox, send_email, list_calendar_events, create_calendar_event]
 # Switch to a different model (gpt-4o-mini) which may have separate quota limits
 llm = ChatOpenAI(model="gpt-4o-mini", api_key=api_key).bind_tools(tools)
 
@@ -195,7 +216,8 @@ def agent_node(state: AgentState):
     memories = retrieve_memory_from_db(user_id, query=last_message)
     memory_str = "\n".join(memories) if memories else "No relevant memories found."
     
-    system_prompt = f"You are a Chief of Staff AI.\nRelevant Memories:\n{memory_str}\n\nUse these memories to personalize your response and actions."
+    current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    system_prompt = f"You are a Chief of Staff AI.\nCurrent DateTime: {current_time}\nRelevant Memories:\n{memory_str}\n\nUse these memories and current time to personalize your response and actions."
     
     messages = [SystemMessage(content=system_prompt)] + state["messages"]
     try:

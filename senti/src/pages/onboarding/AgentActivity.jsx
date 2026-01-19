@@ -5,6 +5,7 @@ import { useNavigate } from "react-router-dom";
 const AgentActivity = () => {
     const navigate = useNavigate();
     const [memories, setMemories] = useState([]);
+    const [searchQuery, setSearchQuery] = useState("");
 
     const handleLogout = async () => {
         await api.logout();
@@ -23,6 +24,11 @@ const AgentActivity = () => {
         fetchData();
     }, []);
 
+    const filteredMemories = memories.filter(mem =>
+        mem.content.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (mem.time && mem.time.toLowerCase().includes(searchQuery.toLowerCase()))
+    );
+
     return (
         <div className="bg-background-light dark:bg-background-dark font-display text-slate-900 dark:text-white min-h-screen">
             <div className="flex flex-col min-h-screen">
@@ -39,15 +45,17 @@ const AgentActivity = () => {
                             <h2 className="text-lg font-bold">Sentellent</h2>
                         </div>
 
-                        <div className="flex items-center rounded-lg border border-slate-200 dark:border-none overflow-hidden h-10">
-                            <div className="pl-4 flex items-center bg-slate-50 dark:bg-[#233648]">
+                        <div className="flex items-center rounded-lg border border-slate-200 dark:border-none overflow-hidden h-10 w-96 max-w-full">
+                            <div className="pl-4 flex items-center bg-slate-50 dark:bg-[#233648] h-full">
                                 <span className="material-symbols-outlined text-slate-400">
                                     search
                                 </span>
                             </div>
                             <input
-                                className="bg-slate-50 dark:bg-[#233648] px-4 text-sm outline-none text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-[#92adc9]"
+                                className="bg-slate-50 dark:bg-[#233648] px-4 text-sm outline-none text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-[#92adc9] h-full w-full"
                                 placeholder="Search logs..."
+                                value={searchQuery}
+                                onChange={(e) => setSearchQuery(e.target.value)}
                             />
                         </div>
                     </div>
@@ -94,8 +102,8 @@ const AgentActivity = () => {
                         </div>
 
                         <div className="px-8 space-y-4 pb-12">
-                            {memories.length > 0 ? (
-                                memories.map((mem) => (
+                            {filteredMemories.length > 0 ? (
+                                filteredMemories.map((mem) => (
                                     <ActivityCard
                                         key={mem.id}
                                         icon="psychology"
@@ -107,17 +115,22 @@ const AgentActivity = () => {
                                     />
                                 ))
                             ) : (
-                                <div className="text-center text-slate-500 py-10">No activity recorded yet. Chat with the agent to generate memories.</div>
+                                <div className="text-center text-slate-500 py-10">
+                                    {searchQuery ? "No matching logs found." : "No activity recorded yet. Chat with the agent to generate memories."}
+                                </div>
                             )}
 
-                            {/* Static Example for visual if empty, or keep as history */}
-                            <ActivityCard
-                                icon="calendar_today"
-                                title='System: Agent Initialized'
-                                time="Just now"
-                                status="System"
-                                statusColor="primary"
-                            />
+                            {/* Static Example - shown only if no search or if search matches it (but hard to match static) */}
+                            {/* Let's hide static example if searching to avoid confusion, or keep it. I'll hide it if there is a search query that doesn't match 'System' */}
+                            {!searchQuery && (
+                                <ActivityCard
+                                    icon="calendar_today"
+                                    title='System: Agent Initialized'
+                                    time="Just now"
+                                    status="System"
+                                    statusColor="primary"
+                                />
+                            )}
                         </div>
                     </section>
 
