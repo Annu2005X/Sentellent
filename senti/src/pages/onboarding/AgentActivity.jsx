@@ -60,11 +60,6 @@ const AgentActivity = () => {
 
                         <div className="h-6 w-px bg-slate-200 dark:bg-[#233648]" />
 
-                        <button className="flex items-center gap-2 bg-primary text-white px-4 h-10 rounded-lg text-sm font-bold">
-                            <span className="material-symbols-outlined text-[18px]">bolt</span>
-                            Agent Active
-                        </button>
-
                         <button onClick={handleLogout} className="text-slate-500 hover:text-red-500 transition-colors" title="Logout">
                             <span className="material-symbols-outlined">logout</span>
                         </button>
@@ -86,7 +81,6 @@ const AgentActivity = () => {
 
                         <nav className="space-y-1">
                             <SideItem icon="analytics" label="All Activity" active />
-                            <SideItem icon="database" label="Memory Logs" />
                         </nav>
                     </aside>
 
