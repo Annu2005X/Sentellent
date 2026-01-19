@@ -6,6 +6,7 @@ from flask_cors import CORS
 from langchain_core.messages import HumanMessage
 from google_auth_oauthlib.flow import Flow
 from google.oauth2.credentials import Credentials
+from googleapiclient.discovery import build
 
 # Ensure we can import from lang directory
 from lang.agent import agent, get_all_memories
@@ -59,16 +60,11 @@ def callback():
             redirect_uri=url_for('callback', _external=True)
         )
         
-        # Manually fetch the token since we are in a REST API context
-        # Flask's request.url might be http but Google sends https sometimes behind proxies
-        # For local dev, http is fine.
         authorization_response = request.url
         flow.fetch_token(authorization_response=authorization_response)
         
         credentials = flow.credentials
         
-        # Save credentials to token.json for the agent to use
-        # In a multi-user app, store this in a DB keyed by user_id
         with open('token.json', 'w') as token:
             token.write(credentials.to_json())
             
@@ -76,6 +72,32 @@ def callback():
         
     except Exception as e:
         return f"Authentication failed: {e}", 400
+
+def get_google_service(service_name, version):
+    if os.path.exists('token.json'):
+        creds = Credentials.from_authorized_user_file('token.json', SCOPES)
+        return build(service_name, version, credentials=creds)
+    return None
+
+def get_current_user_info():
+    service = get_google_service('oauth2', 'v2')
+    if service:
+        try:
+            return service.userinfo().get().execute()
+        except:
+            return None
+    return None
+
+@app.route('/me')
+def get_current_user():
+    user_info = get_current_user_info()
+    if user_info:
+        return jsonify({
+            "name": user_info.get('name'),
+            "email": user_info.get('email'),
+            "picture": user_info.get('picture')
+        })
+    return jsonify({"error": "Not logged in"}), 401
 
 @app.route('/chat', methods=['POST'])
 def chat_endpoint():
@@ -85,7 +107,10 @@ def chat_endpoint():
             return jsonify({"error": "No input data provided"}), 400
             
         user_input = data.get("message")
-        user_id = data.get("user_id", "demo_user")
+        
+        # Determine User ID from authenticated session
+        user_info = get_current_user_info()
+        user_id = user_info.get('email') if user_info else "demo_user"
         
         if not user_input:
             return jsonify({"error": "Message field is required"}), 400
@@ -114,14 +139,18 @@ def chat_endpoint():
 @app.route('/logout')
 def logout():
     session.clear()
-    # Optional: Clear server-side token if single-user mode
     if os.path.exists('token.json'):
          os.remove('token.json')
     return jsonify({"message": "Logged out successfully"})
 
 @app.route('/memory', methods=['GET'])
 def get_memory():
-    user_id = request.args.get("user_id", "demo_user")
+    # Use authenticated user email if available
+    user_info = get_current_user_info()
+    if not user_info:
+        return jsonify({"memories": []})
+        
+    user_id = user_info.get('email')
     memories = get_all_memories(user_id)
     return jsonify({"memories": memories})
 

@@ -57,5 +57,16 @@ export const api = {
         } catch (error) {
             console.error('Logout error:', error);
         }
+    },
+
+    // Get User Profile
+    getUserProfile: async () => {
+        try {
+            const response = await axios.get(`${API_URL}/me`);
+            return response.data;
+        } catch (error) {
+            console.error('Fetch profile error:', error);
+            return null;
+        }
     }
 };

@@ -17,6 +17,7 @@ const CommandCenter = () => {
     const [inputText, setInputText] = useState("");
     const [isLoading, setIsLoading] = useState(false);
     const [memories, setMemories] = useState([]);
+    const [user, setUser] = useState(null);
     const messagesEndRef = useRef(null);
 
     const scrollToBottom = () => {
@@ -27,9 +28,13 @@ const CommandCenter = () => {
         scrollToBottom();
     }, [messages]);
 
-    // Fetch memory on mount
     useEffect(() => {
-        const fetchMemory = async () => {
+        const loadData = async () => {
+            // Fetch Profile
+            const profile = await api.getUserProfile();
+            setUser(profile);
+
+            // Fetch Memory
             try {
                 const data = await api.getMemory();
                 setMemories(data.memories || []);
@@ -37,8 +42,8 @@ const CommandCenter = () => {
                 console.error("Failed to fetch memories", e);
             }
         };
-        fetchMemory();
-    }, [messages]); // Refetch when messages change (in case memory updated)
+        loadData();
+    }, []);
 
     const handleSend = async () => {
         if (!inputText.trim()) return;
@@ -133,12 +138,14 @@ const CommandCenter = () => {
                     {/* User Card */}
                     <div className="flex flex-col gap-3">
                         <div className="flex items-center gap-3 p-3 bg-[#1c2a38] rounded-xl border border-[#233648]">
-                            <div
-                                className="size-10 rounded-full bg-cover bg-center bg-gray-600"
-                            />
+                            {user?.picture ? (
+                                <img src={user.picture} alt="Profile" className="size-10 rounded-full" />
+                            ) : (
+                                <div className="size-10 rounded-full bg-cover bg-center bg-gray-600" />
+                            )}
                             <div className="flex-1 min-w-0">
-                                <p className="text-xs font-bold truncate">Alex Sterling</p>
-                                <p className="text-[10px] text-[#92adc9]">Premium Workspace</p>
+                                <p className="text-xs font-bold truncate">{user?.name || "Guest User"}</p>
+                                <p className="text-[10px] text-[#92adc9] truncate">{user?.email || "Premium Workspace"}</p>
                             </div>
                             <span
                                 className="material-symbols-outlined text-[#92adc9] text-sm cursor-pointer hover:text-red-500"
