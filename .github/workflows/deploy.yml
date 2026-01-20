@@ -1,34 +1,47 @@
-name: Deploy to Elastic Beanstalk
+name: React + Flask AWS CI/CD
 
 on:
   push:
-    branches:
-      - main
-    paths:
-      - 'server/**'
+    branches: [ main ]
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-    - name: Checkout source code
-      uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-    - name: Set up Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.11'
+      - name: Build React
+        working-directory: senti
+        run: |
+          npm install
+          npm run build
+        env:
+           CI: false 
+           # CI=false prevents build failure on warnings (common in CRA)
 
-    - name: Install EB CLI
-      run: |
-        python -m pip install --upgrade pip
-        pip install awsebcli
+      - name: Deploy React to S3
+        uses: jakejarvis/s3-sync-action@master
+        with:
+          args: --delete
+        env:
+          AWS_S3_BUCKET: ${{ secrets.S3_BUCKET_NAME }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION: ${{ secrets.AWS_REGION }}
+          SOURCE_DIR: senti/build
 
-    - name: Deploy to EB
-      env:
-        AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-        AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        AWS_DEFAULT_REGION: ap-south-1
-      working-directory: ./server
-      run: |
-        eb deploy
+      - name: Zip Flask Backend
+        run: |
+          cd server
+          zip -r backend.zip . -x "*.git*" "venv/*" "__pycache__/*"
+
+      - name: Deploy Flask to Elastic Beanstalk
+        uses: einaregilsson/beanstalk-deploy@v21
+        with:
+          aws_access_key: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws_secret_key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          application_name: ${{ secrets.EB_APP_NAME }}
+          environment_name: ${{ secrets.EB_ENV_NAME }}
+          version_label: ${{ github.sha }}
+          region: ${{ secrets.AWS_REGION }}
+          deployment_package: server/backend.zip
