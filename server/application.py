@@ -14,9 +14,15 @@ from googleapiclient.discovery import build
 # Ensure we can import from lang directory
 from lang.agent import agent, get_all_memories
 
-app = Flask(__name__)
+from dotenv import load_dotenv
+
+application = Flask(__name__)
+app=application
 app.secret_key = os.urandom(24)
 CORS(app, supports_credentials=True)
+
+# Load environment variables
+load_dotenv()
 
 # Google Auth Configuration
 SCOPES = [
@@ -37,10 +43,24 @@ os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
 def home():
     return jsonify({"message": "Sentellent Agent API Running"})
 
+def get_google_client_config():
+    return {
+        "web": {
+            "client_id": os.environ.get("GOOGLE_CLIENT_ID"),
+            "project_id": os.environ.get("GOOGLE_PROJECT_ID"),
+            "auth_uri": os.environ.get("GOOGLE_AUTH_URI"),
+            "token_uri": os.environ.get("GOOGLE_TOKEN_URI"),
+            "auth_provider_x509_cert_url": os.environ.get("GOOGLE_AUTH_PROVIDER_X509_CERT_URL"),
+            "client_secret": os.environ.get("GOOGLE_CLIENT_SECRET"),
+            "redirect_uris": [os.environ.get("GOOGLE_REDIRECT_URIS")],
+        }
+    }
+
 @app.route('/auth/google')
 def login():
-    flow = Flow.from_client_secrets_file(
-        'credentials.json',
+    client_config = get_google_client_config()
+    flow = Flow.from_client_config(
+        client_config,
         scopes=SCOPES,
         redirect_uri=url_for('callback', _external=True)
     )
@@ -56,8 +76,9 @@ def login():
 def callback():
     try:
         state = session['state']
-        flow = Flow.from_client_secrets_file(
-            'credentials.json',
+        client_config = get_google_client_config()
+        flow = Flow.from_client_config(
+            client_config,
             scopes=SCOPES,
             state=state,
             redirect_uri=url_for('callback', _external=True)
