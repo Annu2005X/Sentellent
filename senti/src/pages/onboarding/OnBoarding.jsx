@@ -7,7 +7,9 @@ const OnBoarding = () => {
 
   const handleContinue = () => {
     // Redirect directly to backend to ensure session cookies are set correctly
-    window.location.href = 'http://localhost:5000/auth/google';
+    // Redirect directly to backend to ensure session cookies are set correctly
+    const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+    window.location.href = `${API_URL}/auth/google`;
   };
 
   return (

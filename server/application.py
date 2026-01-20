@@ -92,7 +92,8 @@ def callback():
         with open('token.json', 'w') as token:
             token.write(credentials.to_json())
             
-        return redirect("http://localhost:3000/dashboard?auth=success")
+        frontend_url = os.environ.get('FRONTEND_URL', 'http://localhost:3000')
+        return redirect(f"{frontend_url}/dashboard?auth=success")
         
     except Exception as e:
         return f"Authentication failed: {e}", 400
