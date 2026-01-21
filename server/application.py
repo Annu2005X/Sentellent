@@ -103,6 +103,8 @@ def callback():
 
         print(f"DEBUG: Handling Callback with redirect_uri: {redirect_uri}")
 
+        client_config = get_google_client_config()
+
         flow = Flow.from_client_config(
             client_config,
             scopes=SCOPES,
