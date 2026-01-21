@@ -96,7 +96,7 @@ def callback():
         state = session['state']
         # Use explicit redirect URI from env if available, else fallback to hardcoded EB URL -> dynamic
         PRODUCTION_CALLBACK = 'http://flask-backend-env.eba-qprsi62c.ap-south-1.elasticbeanstalk.com/auth/google/callback'
-        redirect_uri = os.environ.get('GOOGLE_REDIRECT_URI', PRODUCTION_CALLBACK)
+        redirect_uri = PRODUCTION_CALLBACK
         
         if 'localhost' in request.host:
              redirect_uri = os.environ.get('GOOGLE_REDIRECT_URI', url_for('callback', _external=True))
