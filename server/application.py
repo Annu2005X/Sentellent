@@ -59,10 +59,16 @@ def get_google_client_config():
 @app.route('/auth/google')
 def login():
     client_config = get_google_client_config()
+    
+    # Use explicit redirect URI from env if available, else fallback to dynamic
+    redirect_uri = os.environ.get('GOOGLE_REDIRECT_URI')
+    if not redirect_uri:
+        redirect_uri = url_for('callback', _external=True)
+        
     flow = Flow.from_client_config(
         client_config,
         scopes=SCOPES,
-        redirect_uri=url_for('callback', _external=True)
+        redirect_uri=redirect_uri
     )
     authorization_url, state = flow.authorization_url(
         access_type='offline',
@@ -76,12 +82,16 @@ def login():
 def callback():
     try:
         state = session['state']
-        client_config = get_google_client_config()
+        # Use explicit redirect URI from env if available, else fallback to dynamic
+        redirect_uri = os.environ.get('GOOGLE_REDIRECT_URI')
+        if not redirect_uri:
+            redirect_uri = url_for('callback', _external=True)
+
         flow = Flow.from_client_config(
             client_config,
             scopes=SCOPES,
             state=state,
-            redirect_uri=url_for('callback', _external=True)
+            redirect_uri=redirect_uri
         )
         
         authorization_response = request.url
