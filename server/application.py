@@ -41,7 +41,13 @@ os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
 
 @app.route('/')
 def home():
-    return jsonify({"message": "Sentellent Agent API Running"})
+    # Update this string to verify deployment
+    VERSION = "v1.1 - OAuth Fixed + Hardcoded URI"
+    return jsonify({
+        "message": "Sentellent Agent API Running",
+        "version": VERSION,
+        "redirect_uri_configured": os.environ.get('GOOGLE_REDIRECT_URI', 'Default Production URL')
+    })
 
 def get_google_client_config():
     return {
