@@ -60,11 +60,17 @@ def get_google_client_config():
 def login():
     client_config = get_google_client_config()
     
-    # Use explicit redirect URI from env if available, else fallback to dynamic
-    redirect_uri = os.environ.get('GOOGLE_REDIRECT_URI')
-    if not redirect_uri:
-        redirect_uri = url_for('callback', _external=True)
-        
+    # Use explicit redirect URI from env if available, else fallback to hardcoded EB URL, then dynamic
+    # This prevents 'http' vs 'https' or internal IP issues on Elastic Beanstalk
+    PRODUCTION_CALLBACK = 'http://flask-backend-env.eba-qprsi62c.ap-south-1.elasticbeanstalk.com/auth/google/callback'
+    redirect_uri = os.environ.get('GOOGLE_REDIRECT_URI', PRODUCTION_CALLBACK)
+    
+    # Fallback to localhost if we are running locally (dev detection could be better, but this updates the default)
+    if 'localhost' in request.host:
+         redirect_uri = os.environ.get('GOOGLE_REDIRECT_URI', url_for('callback', _external=True))
+
+    print(f"DEBUG: Initiating OAuth with redirect_uri: {redirect_uri}")
+
     flow = Flow.from_client_config(
         client_config,
         scopes=SCOPES,
@@ -82,10 +88,14 @@ def login():
 def callback():
     try:
         state = session['state']
-        # Use explicit redirect URI from env if available, else fallback to dynamic
-        redirect_uri = os.environ.get('GOOGLE_REDIRECT_URI')
-        if not redirect_uri:
-            redirect_uri = url_for('callback', _external=True)
+        # Use explicit redirect URI from env if available, else fallback to hardcoded EB URL -> dynamic
+        PRODUCTION_CALLBACK = 'http://flask-backend-env.eba-qprsi62c.ap-south-1.elasticbeanstalk.com/auth/google/callback'
+        redirect_uri = os.environ.get('GOOGLE_REDIRECT_URI', PRODUCTION_CALLBACK)
+        
+        if 'localhost' in request.host:
+             redirect_uri = os.environ.get('GOOGLE_REDIRECT_URI', url_for('callback', _external=True))
+
+        print(f"DEBUG: Handling Callback with redirect_uri: {redirect_uri}")
 
         flow = Flow.from_client_config(
             client_config,
